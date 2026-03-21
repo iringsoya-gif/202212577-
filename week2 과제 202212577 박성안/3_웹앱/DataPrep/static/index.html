@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ko" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Preprocessing — Min-Max Normalization</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            space:  { DEFAULT: '#0f0f1a', light: '#1a1a2e' },
+            purple: { DEFAULT: '#6c63ff', dark: '#4a43cc', light: '#8b85ff' },
+            pink:   { DEFAULT: '#ff6584', light: '#ff8fa3' },
+            teal:   { DEFAULT: '#43b89c', light: '#65d4b8' },
+            amber:  { DEFAULT: '#ffc966' },
+            blue:   { DEFAULT: '#61dafb' },
+            border: '#2d2d44',
+          },
+          fontFamily: { sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    body { background: #0f0f1a; color: #e2e8f0; }
+    .glass { background: rgba(26,26,46,0.85); backdrop-filter: blur(12px); border: 1px solid #2d2d44; }
+    .grad-text { background: linear-gradient(135deg,#6c63ff,#ff6584,#43b89c); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+
+    /* Slider */
+    input[type=range]{ -webkit-appearance:none; height:4px; border-radius:9999px; background:#2d2d44; outline:none; }
+    input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:#6c63ff; cursor:pointer; border:2px solid white; box-shadow:0 0 8px rgba(108,99,255,.5); }
+
+    /* Animations */
+    @keyframes fadeIn{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+    .fade-in{ animation:fadeIn .4s ease forwards; }
+    @keyframes spin{ to{transform:rotate(360deg)} }
+    .spin{ animation:spin .8s linear infinite; }
+    @keyframes pulseGlow{ 0%,100%{box-shadow:0 0 4px #43b89c} 50%{box-shadow:0 0 14px #43b89c} }
+    .pulse-dot{ animation:pulseGlow 1.5s ease-in-out infinite; }
+    @keyframes countUp{ from{opacity:0;transform:scale(.8)} to{opacity:1;transform:scale(1)} }
+    .count-up{ animation:countUp .5s cubic-bezier(.34,1.56,.64,1) forwards; }
+
+    /* Tab */
+    .tab-btn.active{ background:rgba(108,99,255,.2); color:#8b85ff; border-color:#6c63ff; }
+
+    /* Formula card */
+    .formula-box{ font-family:'JetBrains Mono',monospace; background:#0a0a14; border:1px solid #2d2d44; border-radius:.75rem; padding:1rem; font-size:.8rem; line-height:1.8; }
+
+    /* Number input */
+    input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; }
+    input.dark-input{ background:#0f0f1a; border:1px solid #2d2d44; color:#e2e8f0; border-radius:.5rem; padding:.6rem .9rem; font-size:.875rem; width:100%; transition:border-color .2s,box-shadow .2s; outline:none; }
+    input.dark-input:focus{ border-color:rgba(108,99,255,.6); box-shadow:0 0 16px rgba(108,99,255,.15); }
+
+    /* Glow border */
+    .glow-purple{ box-shadow:0 0 0 1px rgba(108,99,255,.4),0 0 24px rgba(108,99,255,.12); }
+    .glow-teal  { box-shadow:0 0 0 1px rgba(67,184,156,.4),0 0 24px rgba(67,184,156,.12); }
+
+    /* Step arrow */
+    .step-arrow{ color:#2d2d44; font-size:1.5rem; display:flex; align-items:center; }
+
+    /* Result value */
+    .result-val{ font-family:'JetBrains Mono',monospace; font-size:1.4rem; font-weight:700; }
+
+    /* Tooltip */
+    .tooltip-wrap{ position:relative; }
+    .tooltip-wrap .tooltip{ display:none; position:absolute; bottom:120%; left:50%; transform:translateX(-50%); background:#1a1a2e; border:1px solid #2d2d44; border-radius:.5rem; padding:.4rem .7rem; font-size:.7rem; white-space:nowrap; z-index:50; color:#e2e8f0; }
+    .tooltip-wrap:hover .tooltip{ display:block; }
+  </style>
+</head>
+<body class="font-sans antialiased min-h-screen">
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════ -->
+<header class="border-b border-border bg-space-light/60 backdrop-blur sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-purple to-teal flex items-center justify-center text-white text-xs font-bold">N</div>
+      <span class="font-semibold text-sm tracking-wide">Data Preprocessing</span>
+      <span class="px-2 py-0.5 rounded-full bg-teal/10 text-teal text-[10px] font-mono border border-teal/20">Min-Max · Z-Score · NumPy Only</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <div id="statusDot" class="w-2 h-2 rounded-full bg-border"></div>
+      <span id="statusText" class="text-xs text-gray-500">대기 중</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ HERO ══════════════════════════════════════════════════ -->
+<section class="max-w-7xl mx-auto px-6 pt-12 pb-8 text-center">
+  <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple/30 bg-purple/5 text-purple-light text-xs font-mono mb-5">
+    ⚡ 데이터 전처리 · Feature Scaling
+  </div>
+  <h1 class="text-5xl md:text-6xl font-black mb-4 leading-tight">
+    <span class="grad-text">정규화</span> <span class="text-gray-200">시각화</span>
+  </h1>
+  <p class="text-gray-400 text-lg max-w-2xl mx-auto leading-relaxed">
+    연봉 <code class="font-mono text-pink bg-pink/10 px-1.5 py-0.5 rounded text-sm">3,000만 ~ 1.5억</code>과
+    나이 <code class="font-mono text-teal bg-teal/10 px-1.5 py-0.5 rounded text-sm">22 ~ 65</code>처럼<br />
+    단위가 극단적으로 다른 데이터를 <strong class="text-amber">0 ~ 1</strong>로 통일하는 과정
+  </p>
+
+  <!-- Why Normalize — 3 cards -->
+  <div class="grid grid-cols-3 gap-4 max-w-2xl mx-auto mt-8">
+    <div class="glass rounded-xl p-4 text-center">
+      <div class="text-2xl mb-1">⚖️</div>
+      <div class="text-xs font-semibold text-gray-300 mb-1">Scale Mismatch</div>
+      <div class="text-[10px] text-gray-500">연봉 1억 vs 나이 30<br/>→ ML이 연봉만 중시</div>
+    </div>
+    <div class="flex items-center justify-center text-2xl text-amber font-bold">→</div>
+    <div class="glass rounded-xl p-4 text-center border border-teal/30">
+      <div class="text-2xl mb-1">✅</div>
+      <div class="text-xs font-semibold text-teal mb-1">After Scaling</div>
+      <div class="text-[10px] text-gray-500">0.75 vs 0.30<br/>→ 동등한 기여도</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ MAIN GRID ═════════════════════════════════════════════ -->
+<main class="max-w-7xl mx-auto px-6 pb-20">
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- ══ LEFT PANEL ══════════════════════════════════════════ -->
+    <aside class="lg:col-span-3 space-y-4">
+
+      <!-- Control -->
+      <div class="glass rounded-2xl p-5 glow-purple">
+        <h2 class="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-4 rounded-full bg-purple inline-block"></span>
+          데이터 설정
+        </h2>
+        <div>
+          <div class="flex justify-between mb-1.5">
+            <label class="text-xs text-gray-400">샘플 수</label>
+            <span id="samplesVal" class="text-xs font-mono text-purple-light font-bold">300</span>
+          </div>
+          <input type="range" id="samplesSlider" min="100" max="800" step="50" value="300" class="w-full" />
+        </div>
+        <!-- Method selector -->
+        <div class="mt-3">
+          <label class="text-xs text-gray-400 block mb-1.5">정규화 방법</label>
+          <div class="grid grid-cols-3 gap-1">
+            <button onclick="setMethod('minmax',this)" class="method-btn active text-[10px] py-1.5 rounded-lg border border-purple/40 bg-purple/10 text-purple-light font-medium transition">Min-Max</button>
+            <button onclick="setMethod('zscore',this)" class="method-btn text-[10px] py-1.5 rounded-lg border border-border text-gray-500 font-medium transition hover:border-teal/40 hover:text-teal">Z-Score</button>
+            <button onclick="setMethod('both',this)" class="method-btn text-[10px] py-1.5 rounded-lg border border-border text-gray-500 font-medium transition hover:border-amber/40 hover:text-amber">Both</button>
+          </div>
+        </div>
+
+        <button id="runBtn" onclick="runNormalize()"
+          class="w-full mt-4 py-3 rounded-xl bg-purple hover:bg-purple-dark text-white font-semibold text-sm
+                 transition-all flex items-center justify-center gap-2 hover:shadow-lg active:scale-95">
+          <svg id="runIcon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+          </svg>
+          <span id="runBtnText">정규화 실행</span>
+        </button>
+      </div>
+
+      <!-- Formula Cards -->
+      <div class="glass rounded-2xl p-5">
+        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">정규화 공식</h2>
+        <div class="space-y-3">
+          <div class="formula-box">
+            <div class="text-purple-light text-[11px] mb-1 font-semibold">① Min-Max Scaling</div>
+            <div class="text-teal">x' = (x - x<sub>min</sub>)</div>
+            <div class="text-teal pl-5">   / (x<sub>max</sub> - x<sub>min</sub>)</div>
+            <div class="text-gray-600 text-[10px] mt-1">→ 결과: [0, 1]</div>
+          </div>
+          <div class="formula-box">
+            <div class="text-pink text-[11px] mb-1 font-semibold">② Z-Score (Standard)</div>
+            <div class="text-amber">x' = (x - μ) / σ</div>
+            <div class="text-gray-600 text-[10px] mt-1">→ 결과: 평균=0, std=1</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scaler Params (after run) -->
+      <div id="scalerParamsCard" class="glass rounded-2xl p-5 hidden fade-in">
+        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Scaler Parameters</h2>
+        <div class="space-y-3 text-[11px] font-mono">
+          <div>
+            <div class="text-purple-light font-semibold mb-1">Salary</div>
+            <div class="space-y-0.5 text-gray-400">
+              <div>min: <span id="spSalMin" class="text-gray-200"></span></div>
+              <div>max: <span id="spSalMax" class="text-gray-200"></span></div>
+              <div>range: <span id="spSalRange" class="text-amber"></span></div>
+            </div>
+          </div>
+          <div>
+            <div class="text-teal font-semibold mb-1">Age</div>
+            <div class="space-y-0.5 text-gray-400">
+              <div>min: <span id="spAgeMin" class="text-gray-200"></span></div>
+              <div>max: <span id="spAgeMax" class="text-gray-200"></span></div>
+              <div>range: <span id="spAgeRange" class="text-amber"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Card -->
+      <div id="statsCard" class="glass rounded-2xl p-5 hidden fade-in">
+        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">분산 변화</h2>
+        <div class="space-y-3">
+          <div>
+            <div class="text-[10px] text-gray-500 mb-1">Salary Variance</div>
+            <div class="flex justify-between text-xs font-mono">
+              <span class="text-pink">Raw: <span id="varSalRaw"></span></span>
+              <span>→</span>
+              <span class="text-teal">MM: <span id="varSalMm"></span></span>
+            </div>
+          </div>
+          <div>
+            <div class="text-[10px] text-gray-500 mb-1">Age Variance</div>
+            <div class="flex justify-between text-xs font-mono">
+              <span class="text-pink">Raw: <span id="varAgeRaw"></span></span>
+              <span>→</span>
+              <span class="text-teal">MM: <span id="varAgeMm"></span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ══ CENTER PANEL ═════════════════════════════════════════ -->
+    <section class="lg:col-span-6 space-y-4">
+
+      <!-- Plot Tabs -->
+      <div class="glass rounded-2xl overflow-hidden">
+        <div class="flex border-b border-border px-4 pt-3 gap-1 flex-wrap">
+          <button class="tab-btn active text-xs px-3 py-1.5 rounded-t-lg border border-transparent font-medium transition"
+            onclick="switchTab('raw',this)">Before</button>
+          <button class="tab-btn text-xs px-3 py-1.5 rounded-t-lg border border-transparent font-medium text-gray-500 transition"
+            onclick="switchTab('normalized',this)">After</button>
+          <button class="tab-btn text-xs px-3 py-1.5 rounded-t-lg border border-transparent font-medium text-gray-500 transition"
+            onclick="switchTab('comparison',this)">Comparison</button>
+          <button class="tab-btn text-xs px-3 py-1.5 rounded-t-lg border border-transparent font-medium text-gray-500 transition"
+            onclick="switchTab('prediction',this)">Prediction</button>
+        </div>
+        <div class="p-4">
+          <div id="tab-raw">
+            <div id="rawWrap" class="rounded-xl bg-space overflow-hidden flex items-center justify-center min-h-80">
+              <div class="text-center text-gray-600">
+                <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                <p class="text-sm">정규화 실행 후 표시됩니다</p>
+              </div>
+            </div>
+          </div>
+          <div id="tab-normalized" class="hidden">
+            <div id="normWrap" class="rounded-xl bg-space overflow-hidden flex items-center justify-center min-h-80">
+              <p class="text-xs text-gray-600">실행 후 표시</p>
+            </div>
+          </div>
+          <div id="tab-comparison" class="hidden">
+            <div id="compWrap" class="rounded-xl bg-space overflow-hidden flex items-center justify-center min-h-80">
+              <p class="text-xs text-gray-600">실행 후 표시</p>
+            </div>
+          </div>
+          <div id="tab-prediction" class="hidden">
+            <div id="predWrap" class="rounded-xl bg-space overflow-hidden flex items-center justify-center min-h-80">
+              <p class="text-xs text-gray-600">예측 후 표시</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Variance Plot -->
+      <div class="glass rounded-2xl p-4">
+        <h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+          <span class="w-1.5 h-4 rounded-full bg-amber inline-block"></span>
+          분산 변화 비교 (Raw → Min-Max → Z-Score)
+        </h3>
+        <div id="varWrap" class="rounded-xl bg-space overflow-hidden flex items-center justify-center min-h-44">
+          <p class="text-xs text-gray-600">실행 후 표시</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══ RIGHT PANEL ══════════════════════════════════════════ -->
+    <aside class="lg:col-span-3 space-y-4">
+
+      <!-- Prediction Form -->
+      <div class="glass rounded-2xl p-5 glow-teal">
+        <h2 class="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-4 rounded-full bg-pink inline-block"></span>
+          새 데이터 정규화 예측
+        </h2>
+
+        <div class="space-y-4">
+          <div>
+            <label class="text-xs text-gray-400 block mb-1.5">연봉 (원)</label>
+            <input type="number" id="inSalary" value="75000000" class="dark-input" placeholder="예: 75000000" />
+            <div class="flex justify-end mt-1">
+              <span id="salaryDisplay" class="text-[10px] text-gray-500 font-mono">7,500만원</span>
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 block mb-1.5">나이 (세)</label>
+            <input type="number" id="inAge" value="35" class="dark-input" placeholder="예: 35" />
+          </div>
+
+          <!-- Quick presets -->
+          <div>
+            <div class="text-[10px] text-gray-600 mb-1.5">빠른 입력</div>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button onclick="setPreset(30000000,24)" class="text-[10px] py-1.5 rounded-lg border border-border hover:border-purple/40 text-gray-400 hover:text-gray-200 transition">신입 (24세)</button>
+              <button onclick="setPreset(55000000,32)" class="text-[10px] py-1.5 rounded-lg border border-border hover:border-teal/40 text-gray-400 hover:text-gray-200 transition">주니어 (32세)</button>
+              <button onclick="setPreset(90000000,42)" class="text-[10px] py-1.5 rounded-lg border border-border hover:border-amber/40 text-gray-400 hover:text-gray-200 transition">시니어 (42세)</button>
+              <button onclick="setPreset(140000000,55)" class="text-[10px] py-1.5 rounded-lg border border-border hover:border-pink/40 text-gray-400 hover:text-gray-200 transition">임원 (55세)</button>
+            </div>
+          </div>
+
+          <button onclick="runPredict()"
+            class="w-full py-2.5 rounded-xl border border-pink/40 bg-pink/10 hover:bg-pink/20 text-pink
+                   font-semibold text-sm transition-all flex items-center justify-center gap-2">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            정규화 계산
+          </button>
+        </div>
+
+        <!-- Result -->
+        <div id="predResult" class="hidden mt-4 fade-in space-y-3">
+          <div class="rounded-xl bg-space p-3 border border-teal/30 space-y-3">
+
+            <!-- Min-Max Result -->
+            <div>
+              <div class="text-[10px] text-gray-500 mb-1.5 font-semibold uppercase tracking-wider">Min-Max Scaled</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="bg-space-light rounded-lg p-2 text-center">
+                  <div class="text-[10px] text-purple-light mb-0.5">Salary</div>
+                  <div id="resMmSal" class="result-val text-purple-light"></div>
+                </div>
+                <div class="bg-space-light rounded-lg p-2 text-center">
+                  <div class="text-[10px] text-teal mb-0.5">Age</div>
+                  <div id="resMmAge" class="result-val text-teal"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Z-Score Result -->
+            <div>
+              <div class="text-[10px] text-gray-500 mb-1.5 font-semibold uppercase tracking-wider">Z-Score</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="bg-space-light rounded-lg p-2 text-center">
+                  <div class="text-[10px] text-pink mb-0.5">Salary</div>
+                  <div id="resZsSal" class="text-pink font-mono font-bold text-base"></div>
+                </div>
+                <div class="bg-space-light rounded-lg p-2 text-center">
+                  <div class="text-[10px] text-amber mb-0.5">Age</div>
+                  <div id="resZsAge" class="text-amber font-mono font-bold text-base"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Percentile bars -->
+            <div class="pt-1 space-y-1.5">
+              <div class="text-[10px] text-gray-500 mb-1">Percentile Position</div>
+              <div>
+                <div class="flex justify-between text-[10px] text-gray-500 mb-0.5">
+                  <span>Salary</span><span id="pctSalLabel"></span>
+                </div>
+                <div class="h-1.5 bg-border rounded-full overflow-hidden">
+                  <div id="pctSalBar" class="h-full bg-purple/60 rounded-full transition-all duration-700" style="width:0%"></div>
+                </div>
+              </div>
+              <div>
+                <div class="flex justify-between text-[10px] text-gray-500 mb-0.5">
+                  <span>Age</span><span id="pctAgeLabel"></span>
+                </div>
+                <div class="h-1.5 bg-border rounded-full overflow-hidden">
+                  <div id="pctAgeBar" class="h-full bg-teal/60 rounded-full transition-all duration-700" style="width:0%"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Interpretation -->
+            <div class="pt-1">
+              <p id="predInterp" class="text-[10px] text-gray-400 leading-relaxed"></p>
+            </div>
+          </div>
+
+          <!-- Formula applied -->
+          <div class="formula-box text-[10px]">
+            <div class="text-purple-light font-semibold mb-1">Applied Formula:</div>
+            <div id="formulaSal" class="text-gray-400"></div>
+            <div id="formulaAge" class="text-gray-400 mt-0.5"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats summary -->
+      <div id="dataSummaryCard" class="glass rounded-2xl p-5 hidden fade-in">
+        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Dataset Stats</h2>
+        <div class="space-y-3 text-[11px]">
+          <div>
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="w-2 h-2 rounded-full bg-purple"></span>
+              <span class="font-semibold text-gray-300">Salary</span>
+            </div>
+            <div class="font-mono text-gray-500 space-y-0.5">
+              <div>mean: <span id="dsSalMean" class="text-gray-300"></span></div>
+              <div>std:  <span id="dsSalStd"  class="text-gray-300"></span></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="w-2 h-2 rounded-full bg-teal"></span>
+              <span class="font-semibold text-gray-300">Age</span>
+            </div>
+            <div class="font-mono text-gray-500 space-y-0.5">
+              <div>mean: <span id="dsAgeMean" class="text-gray-300"></span></div>
+              <div>std:  <span id="dsAgeStd"  class="text-gray-300"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast -->
+      <div id="toast" class="hidden fixed bottom-6 right-6 z-50 fade-in">
+        <div class="glass rounded-xl px-4 py-3 text-sm flex items-center gap-3 border border-teal/30 shadow-xl">
+          <div class="w-2 h-2 rounded-full bg-teal pulse-dot"></div>
+          <span id="toastMsg" class="text-gray-300"></span>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+</main>
+
+<script>
+  // ── Slider ─────────────────────────────────────────────
+  const slider = document.getElementById('samplesSlider');
+  slider.addEventListener('input', () => {
+    document.getElementById('samplesVal').textContent = slider.value;
+  });
+
+  // ── Method selector ────────────────────────────────────
+  let selectedMethod = 'minmax';
+  function setMethod(method, btn) {
+    selectedMethod = method;
+    document.querySelectorAll('.method-btn').forEach(b => {
+      b.classList.remove('active','border-purple/40','bg-purple/10','text-purple-light',
+                          'border-teal/40','bg-teal/10','text-teal',
+                          'border-amber/40','bg-amber/10','text-amber');
+      b.classList.add('border-border','text-gray-500');
+    });
+    const colorMap = { minmax:['border-purple/40','bg-purple/10','text-purple-light'],
+                       zscore:['border-teal/40','bg-teal/10','text-teal'],
+                       both:  ['border-amber/40','bg-amber/10','text-amber'] };
+    btn.classList.remove('border-border','text-gray-500');
+    btn.classList.add('active', ...colorMap[method]);
+  }
+
+  // ── Salary display ─────────────────────────────────────
+  document.getElementById('inSalary').addEventListener('input', function() {
+    const v = parseFloat(this.value);
+    if (!isNaN(v)) {
+      const m = v / 1e4;
+      document.getElementById('salaryDisplay').textContent =
+        m >= 10000 ? `${(m/10000).toFixed(1)}억원` : `${m.toFixed(0)}만원`;
+    }
+  });
+
+  // ── Presets ────────────────────────────────────────────
+  function setPreset(salary, age) {
+    document.getElementById('inSalary').value = salary;
+    document.getElementById('inAge').value    = age;
+    document.getElementById('inSalary').dispatchEvent(new Event('input'));
+  }
+
+  // ── Tab ────────────────────────────────────────────────
+  function switchTab(name, btn) {
+    ['raw','normalized','comparison','prediction'].forEach(t => {
+      document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+    });
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  // ── Toast ──────────────────────────────────────────────
+  function showToast(msg, duration = 3000) {
+    const t = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    t.classList.remove('hidden');
+    setTimeout(() => t.classList.add('hidden'), duration);
+  }
+
+  // ── Status ─────────────────────────────────────────────
+  function setStatus(state) {
+    const dot  = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    const m = {
+      idle:    ['bg-border','text-gray-600','대기 중'],
+      loading: ['bg-amber','text-amber','처리 중...'],
+      done:    ['bg-teal','text-teal','완료'],
+      error:   ['bg-pink','text-pink','오류'],
+    };
+    const [dc,tc,label] = m[state]||m.idle;
+    dot.className  = `w-2 h-2 rounded-full ${dc}`;
+    text.className = `text-xs ${tc}`;
+    text.textContent = label;
+  }
+
+  // ── Loading state ──────────────────────────────────────
+  function setLoading(on) {
+    const btn  = document.getElementById('runBtn');
+    const icon = document.getElementById('runIcon');
+    const txt  = document.getElementById('runBtnText');
+    btn.disabled = on;
+    btn.classList.toggle('opacity-60', on);
+    icon.classList.toggle('spin', on);
+    txt.textContent = on ? '처리 중...' : '정규화 실행';
+    setStatus(on ? 'loading' : 'done');
+  }
+
+  // ── Set image ──────────────────────────────────────────
+  function setImg(wrapId, url, alt) {
+    document.getElementById(wrapId).innerHTML =
+      `<img src="${url}" alt="${alt}" class="w-full h-full object-contain rounded-xl cursor-zoom-in hover:scale-[1.02] transition-transform"
+            onclick="window.open('${url}','_blank')" />`;
+  }
+
+  // ── Format number ──────────────────────────────────────
+  function fmtSalary(v) {
+    const m = v / 1e4;
+    return m >= 10000 ? `${(m/10000).toFixed(1)}억` : `${m.toFixed(0)}만`;
+  }
+
+  // ── Run Normalize ──────────────────────────────────────
+  async function runNormalize() {
+    const n_samples = parseInt(slider.value);
+    setLoading(true);
+    try {
+      const res  = await fetch('/api/normalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ n_samples, method: selectedMethod }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const d = await res.json();
+
+      // Images
+      setImg('rawWrap',  d.raw_distribution,        'Before normalization');
+      setImg('normWrap', d.normalized_distribution, 'After normalization');
+      setImg('compWrap', d.comparison_plot,          'Comparison');
+      setImg('varWrap',  d.variance_plot,            'Variance comparison');
+
+      // Stats
+      const sal = d.stats.salary, age = d.stats.age;
+
+      document.getElementById('statsCard').classList.remove('hidden');
+      document.getElementById('varSalRaw').textContent = sal.raw_var > 1e10
+        ? `${(sal.raw_var/1e12).toFixed(2)}T` : sal.raw_var.toFixed(2);
+      document.getElementById('varSalMm').textContent = sal.mm_std ** 2 !== undefined
+        ? (parseFloat(d.stats.salary.mm_std)**2).toFixed(4) : '—';
+      document.getElementById('varAgeRaw').textContent = age.raw_var.toFixed(2);
+      document.getElementById('varAgeMm').textContent  = (parseFloat(d.stats.age.mm_std)**2).toFixed(4);
+
+      // Scaler params
+      document.getElementById('scalerParamsCard').classList.remove('hidden');
+      document.getElementById('spSalMin').textContent   = fmtSalary(d.scaler_params.salary.min);
+      document.getElementById('spSalMax').textContent   = fmtSalary(d.scaler_params.salary.max);
+      document.getElementById('spSalRange').textContent = fmtSalary(d.scaler_params.salary.range);
+      document.getElementById('spAgeMin').textContent   = `${d.scaler_params.age.min}세`;
+      document.getElementById('spAgeMax').textContent   = `${d.scaler_params.age.max}세`;
+      document.getElementById('spAgeRange').textContent = `${d.scaler_params.age.range}세`;
+
+      // Dataset summary
+      document.getElementById('dataSummaryCard').classList.remove('hidden');
+      document.getElementById('dsSalMean').textContent = fmtSalary(sal.raw_mean);
+      document.getElementById('dsSalStd').textContent  = fmtSalary(sal.raw_std);
+      document.getElementById('dsAgeMean').textContent = `${age.raw_mean.toFixed(1)}세`;
+      document.getElementById('dsAgeStd').textContent  = `${age.raw_std.toFixed(1)}세`;
+
+      showToast(`✅ ${n_samples}명 데이터 정규화 완료`);
+      setLoading(false);
+    } catch(err) {
+      setStatus('error');
+      setLoading(false);
+      showToast('❌ ' + err.message);
+    }
+  }
+
+  // ── Run Predict ────────────────────────────────────────
+  async function runPredict() {
+    const salary = parseFloat(document.getElementById('inSalary').value);
+    const age    = parseFloat(document.getElementById('inAge').value);
+
+    if (!salary || !age) { showToast('⚠️ 연봉과 나이를 입력하세요'); return; }
+
+    setStatus('loading');
+    try {
+      const res = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ salary, age }),
+      });
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.detail ?? '오류');
+      }
+      const d = await res.json();
+
+      // Results
+      document.getElementById('predResult').classList.remove('hidden');
+      document.getElementById('resMmSal').textContent = d.minmax.salary.toFixed(4);
+      document.getElementById('resMmAge').textContent = d.minmax.age.toFixed(4);
+      document.getElementById('resZsSal').textContent = (d.zscore.salary > 0 ? '+' : '') + d.zscore.salary.toFixed(3);
+      document.getElementById('resZsAge').textContent = (d.zscore.age > 0 ? '+' : '') + d.zscore.age.toFixed(3);
+
+      // Percentile bars
+      const sp = d.percentile.salary, ap = d.percentile.age;
+      document.getElementById('pctSalLabel').textContent = `${sp.toFixed(1)}th`;
+      document.getElementById('pctAgeLabel').textContent = `${ap.toFixed(1)}th`;
+      setTimeout(() => {
+        document.getElementById('pctSalBar').style.width = sp + '%';
+        document.getElementById('pctAgeBar').style.width = ap + '%';
+      }, 100);
+
+      // Formula
+      document.getElementById('formulaSal').textContent = 'salary: ' + d.formula_applied.salary;
+      document.getElementById('formulaAge').textContent = 'age:    ' + d.formula_applied.age;
+
+      // Interpretation
+      document.getElementById('predInterp').textContent = d.interpretation;
+
+      // Prediction plot
+      setImg('predWrap', d.prediction_plot, '예측 결과');
+      switchTab('prediction', document.querySelectorAll('.tab-btn')[3]);
+
+      showToast(`🎯 ${fmtSalary(salary)}원, ${age}세 → Min-Max: ${d.minmax.salary.toFixed(3)}`);
+      setStatus('done');
+    } catch(err) {
+      setStatus('error');
+      showToast('❌ ' + err.message);
+    }
+  }
+
+  // ── Auto run on load ───────────────────────────────────
+  window.addEventListener('load', () => setTimeout(runNormalize, 500));
+</script>
+</body>
+</html>

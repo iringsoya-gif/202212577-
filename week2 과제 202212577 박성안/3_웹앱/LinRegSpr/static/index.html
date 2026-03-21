@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hooke's Law — TensorFlow Neural Network</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { mono: ['"JetBrains Mono"', 'monospace'] },
+          animation: {
+            'float':   'float 3s ease-in-out infinite',
+            'glow':    'glow 2s ease-in-out infinite alternate',
+            'shimmer': 'shimmer 2.5s linear infinite',
+          },
+          keyframes: {
+            float:   { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-8px)' } },
+            glow:    { from: { boxShadow: '0 0 10px #38bdf840' }, to: { boxShadow: '0 0 30px #38bdf880, 0 0 60px #38bdf830' } },
+            shimmer: { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #020617; color: #f8fafc; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Animated gradient text */
+    .grad-text {
+      background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #f472b6 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    /* Gradient border card */
+    .grad-border {
+      position: relative; border-radius: 1rem;
+      background: linear-gradient(145deg, #1e293b, #0f172a);
+    }
+    .grad-border::before {
+      content: ''; position: absolute; inset: -1px; border-radius: 1rem; z-index: -1;
+      background: linear-gradient(135deg, #38bdf840, #818cf820, #f472b620);
+    }
+    /* Shimmer button */
+    .btn-shimmer {
+      background: linear-gradient(90deg, #0284c7, #7c3aed, #0284c7);
+      background-size: 200% 100%;
+      animation: shimmer 2.5s linear infinite;
+    }
+    /* Metric card pulse on hover */
+    .metric-card { transition: transform .2s, box-shadow .2s; }
+    .metric-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px #38bdf820; }
+    /* Section title underline */
+    .section-title::after {
+      content: ''; display: block; width: 60px; height: 3px; margin: .6rem auto 0;
+      border-radius: 9999px;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+    }
+    /* Custom range */
+    input[type=range] { accent-color: #38bdf8; cursor: pointer; }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    /* Spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 1s linear infinite; }
+    /* Progress bar */
+    @keyframes progress-bar { from { width: 0 } to { width: 100% } }
+    .progress-fill { animation: progress-bar 3.5s ease-in-out forwards; }
+    /* Nav blur */
+    .nav-blur { backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+    /* Code badge */
+    .badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      background: #0f172a; border: 1px solid #334155;
+      border-radius: 9999px; padding: .25rem .75rem;
+      font-size: .75rem; color: #94a3b8;
+    }
+    /* Tooltip */
+    .tip { position: relative; cursor: default; }
+    .tip::after {
+      content: attr(data-tip); pointer-events: none;
+      position: absolute; left: 50%; transform: translateX(-50%);
+      bottom: calc(100% + 6px); white-space: nowrap;
+      background: #1e293b; border: 1px solid #334155;
+      color: #f8fafc; font-size: .7rem; border-radius: .4rem;
+      padding: .25rem .6rem; opacity: 0; transition: opacity .2s;
+    }
+    .tip:hover::after { opacity: 1; }
+  </style>
+</head>
+
+<body class="min-h-screen">
+
+  <!-- ══════════════════════════════ NAVBAR ══════════════════════════════ -->
+  <nav class="fixed top-0 inset-x-0 z-50 nav-blur bg-[#020617]/70 border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-6 py-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-violet-500
+                    flex items-center justify-center font-black text-sm shadow-lg shadow-sky-500/20">
+          H
+        </div>
+        <span class="font-semibold text-slate-200 tracking-tight">Hooke's Law ML</span>
+        <span class="badge">TensorFlow · FastAPI · Tailwind</span>
+      </div>
+      <div class="hidden md:flex items-center gap-7 text-sm text-slate-400">
+        <a href="#physics"  class="hover:text-white transition-colors">물리 배경</a>
+        <a href="#training" class="hover:text-white transition-colors">모델 학습</a>
+        <a href="#predict"  class="hover:text-white transition-colors">예측</a>
+        <a href="#results"  class="hover:text-white transition-colors">결과</a>
+        <span id="navStatus" class="flex items-center gap-1.5 text-xs text-slate-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>미학습
+        </span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════ HERO ══════════════════════════════ -->
+  <section class="relative min-h-screen flex items-center pt-16 pb-10 px-6 overflow-hidden">
+    <!-- Background glows -->
+    <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-sky-500/5 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-violet-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+    <div class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+
+      <!-- ── Left: copy ── -->
+      <div>
+        <div class="flex items-center gap-2 mb-8">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-emerald-400 text-sm font-medium">TensorFlow 2.x · Linear Regression</span>
+        </div>
+        <h1 class="text-6xl lg:text-7xl font-black leading-none mb-6 tracking-tighter">
+          <span class="grad-text">Hooke's</span><br>
+          <span class="text-white">Law</span>
+        </h1>
+        <p class="text-2xl text-slate-300 font-semibold mb-3 mono">F = k · x</p>
+        <p class="text-lg text-slate-400 leading-relaxed mb-10 max-w-lg">
+          TensorFlow가 용수철 데이터로부터 스프링 상수 <strong class="text-white">k = 50 N/m</strong>을
+          스스로 학습하고, 새로운 질량에 대해 늘어나는 길이를 정밀하게 예측합니다.
+        </p>
+        <div class="flex flex-wrap gap-4 mb-12">
+          <button onclick="document.getElementById('training').scrollIntoView({behavior:'smooth'})"
+                  class="btn-shimmer px-8 py-3.5 rounded-xl font-semibold text-white text-base
+                         shadow-lg shadow-sky-500/20 hover:shadow-sky-500/40 transition-shadow">
+            🚀 학습 시작
+          </button>
+          <button onclick="document.getElementById('physics').scrollIntoView({behavior:'smooth'})"
+                  class="px-8 py-3.5 rounded-xl font-semibold text-slate-300 text-base
+                         bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors">
+            물리 배경 보기
+          </button>
+        </div>
+
+        <!-- Stats row -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="metric-card bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 text-center">
+            <div class="text-2xl font-black text-sky-400 mono">50</div>
+            <div class="text-slate-500 text-xs mt-1">N/m 스프링 상수</div>
+          </div>
+          <div class="metric-card bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 text-center">
+            <div class="text-2xl font-black text-violet-400 mono">500</div>
+            <div class="text-slate-500 text-xs mt-1">에포크 학습</div>
+          </div>
+          <div class="metric-card bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 text-center">
+            <div class="text-2xl font-black text-emerald-400 mono">R²≥.99</div>
+            <div class="text-slate-500 text-xs mt-1">목표 정확도</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Right: animated spring SVG ── -->
+      <div class="flex items-center justify-center">
+        <div class="relative">
+          <!-- Outer glow ring -->
+          <div class="absolute inset-0 rounded-full bg-sky-500/5 blur-2xl animate-glow"></div>
+          <svg viewBox="0 0 220 400" xmlns="http://www.w3.org/2000/svg"
+               class="w-72 h-auto drop-shadow-2xl" style="filter: drop-shadow(0 0 20px #38bdf820)">
+            <defs>
+              <linearGradient id="massGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#3b82f6"/>
+                <stop offset="100%" style="stop-color:#1e40af"/>
+              </linearGradient>
+              <filter id="glowFilter">
+                <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <linearGradient id="springGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#38bdf8"/>
+                <stop offset="50%" style="stop-color:#818cf8"/>
+                <stop offset="100%" style="stop-color:#38bdf8"/>
+              </linearGradient>
+            </defs>
+
+            <!-- Ceiling plate -->
+            <rect x="30" y="20" width="160" height="12" rx="3" fill="#334155"/>
+            <!-- Hatch marks -->
+            <g stroke="#1e293b" stroke-width="2">
+              <line x1="45"  y1="20" x2="33"  y2="8"/>
+              <line x1="65"  y1="20" x2="53"  y2="8"/>
+              <line x1="85"  y1="20" x2="73"  y2="8"/>
+              <line x1="105" y1="20" x2="93"  y2="8"/>
+              <line x1="125" y1="20" x2="113" y2="8"/>
+              <line x1="145" y1="20" x2="133" y2="8"/>
+              <line x1="165" y1="20" x2="153" y2="8"/>
+              <line x1="185" y1="20" x2="173" y2="8"/>
+            </g>
+            <!-- Top pin -->
+            <line x1="110" y1="32" x2="110" y2="42" stroke="#475569" stroke-width="3"/>
+            <circle cx="110" cy="42" r="4" fill="#64748b"/>
+
+            <!-- ── Animated group: spring + mass ── -->
+            <g>
+              <animateTransform attributeName="transform" type="translate"
+                values="0,0; 0,22; 0,0" dur="1.9s" repeatCount="indefinite"
+                calcMode="spline" keySplines="0.45 0.05 0.55 0.95;0.45 0.05 0.55 0.95"/>
+
+              <!-- Spring coil (sine wave profile = realistic coil look) -->
+              <polyline
+                points="110,42  110,54  128,63  92,74  128,85  92,96  128,107  92,118
+                        128,129  92,140  128,151  92,162  110,171  110,180"
+                stroke="url(#springGrad)" stroke-width="3" fill="none"
+                stroke-linecap="round" stroke-linejoin="round"
+                filter="url(#glowFilter)"/>
+
+              <!-- Mass block -->
+              <rect x="72" y="180" width="76" height="60" rx="10"
+                    fill="url(#massGrad)" stroke="#60a5fa" stroke-width="1.8"
+                    filter="url(#glowFilter)"/>
+              <text x="110" y="214" text-anchor="middle" fill="white"
+                    font-size="18" font-weight="bold" font-family="Inter,sans-serif">m</text>
+              <text x="110" y="231" text-anchor="middle" fill="#93c5fd"
+                    font-size="11" font-family="Inter,sans-serif">kg</text>
+            </g>
+
+            <!-- Extension arrow (static, beside spring) -->
+            <line x1="170" y1="42" x2="170" y2="240" stroke="#fbbf24"
+                  stroke-width="1.5" stroke-dasharray="5,3"/>
+            <polygon points="170,42  164,54  176,54"  fill="#fbbf24"/>
+            <polygon points="170,240 164,228 176,228" fill="#fbbf24"/>
+            <text x="183" y="143" fill="#fbbf24" font-size="18"
+                  font-weight="bold" font-family="Inter,sans-serif">x</text>
+
+            <!-- Formula box -->
+            <rect x="18" y="278" width="184" height="100" rx="12"
+                  fill="#0f172a" stroke="#334155" stroke-width="1"/>
+            <text x="110" y="301" text-anchor="middle" fill="#38bdf8"
+                  font-size="18" font-weight="bold" font-family="'Courier New',monospace">
+              F = k · x
+            </text>
+            <line x1="30" y1="309" x2="190" y2="309" stroke="#334155" stroke-width="1"/>
+            <text x="110" y="326" text-anchor="middle" fill="#94a3b8"
+                  font-size="12" font-family="Inter,sans-serif">x = (m × g) / k</text>
+            <text x="110" y="344" text-anchor="middle" fill="#64748b"
+                  font-size="10.5" font-family="Inter,sans-serif">k = 50 N/m · g = 9.81 m/s²</text>
+            <text x="110" y="362" text-anchor="middle" fill="#475569"
+                  font-size="10" font-family="Inter,sans-serif">TensorFlow Linear Regression</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ PHYSICS ══════════════════════════════ -->
+  <section id="physics" class="py-24 px-6 bg-slate-900/25">
+    <div class="max-w-7xl mx-auto">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl font-black section-title mb-4">물리 배경</h2>
+        <p class="text-slate-400 text-lg">훅의 법칙과 머신러닝의 만남</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Card 1 -->
+        <div class="grad-border p-8 metric-card">
+          <div class="w-12 h-12 rounded-xl bg-sky-500/15 flex items-center justify-center text-2xl mb-6">⚡</div>
+          <h3 class="text-xl font-bold mb-3">훅의 법칙 (Hooke's Law)</h3>
+          <p class="text-slate-400 text-sm mb-5 leading-relaxed">
+            탄성 한계 내에서 용수철의 변형량은 가해진 힘에 정비례합니다.
+            Robert Hooke이 1678년 발견한 고전역학의 기본 법칙입니다.
+          </p>
+          <div class="bg-[#0f172a] rounded-xl p-4 mono text-sky-400 text-xl font-semibold text-center border border-sky-500/10">
+            F = k · x
+          </div>
+          <div class="mt-4 space-y-1.5 text-slate-500 text-sm mono">
+            <div><span class="text-sky-400">F</span> : 힘 [N] = m × g</div>
+            <div><span class="text-violet-400">k</span> : 용수철 상수 [N/m]</div>
+            <div><span class="text-emerald-400">x</span> : 늘어난 길이 [m]</div>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="grad-border p-8 metric-card">
+          <div class="w-12 h-12 rounded-xl bg-violet-500/15 flex items-center justify-center text-2xl mb-6">🧮</div>
+          <h3 class="text-xl font-bold mb-3">늘어남 예측 공식</h3>
+          <p class="text-slate-400 text-sm mb-5 leading-relaxed">
+            질량 m을 달았을 때 중력 F = mg가 작용합니다.
+            훅의 법칙에 대입하면 늘어나는 길이 x를 정확히 계산할 수 있습니다.
+          </p>
+          <div class="bg-[#0f172a] rounded-xl p-4 mono text-violet-400 text-xl font-semibold text-center border border-violet-500/10">
+            x = (m × g) / k
+          </div>
+          <div class="mt-4 space-y-1.5 text-slate-500 text-sm mono">
+            <div><span class="text-amber-400">m</span> : 질량 [kg]</div>
+            <div><span class="text-pink-400">g</span> : 중력가속도 9.81 m/s²</div>
+            <div><span class="text-violet-400">k</span> : 스프링 상수 50 N/m</div>
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="grad-border p-8 metric-card">
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/15 flex items-center justify-center text-2xl mb-6">🤖</div>
+          <h3 class="text-xl font-bold mb-3">TensorFlow 선형 회귀</h3>
+          <p class="text-slate-400 text-sm mb-5 leading-relaxed">
+            단일 Dense 레이어(파라미터 2개)로 구성된 신경망이 데이터로부터
+            k를 자동 학습합니다. MSE 손실·Adam 옵티마이저를 사용합니다.
+          </p>
+          <div class="bg-[#0f172a] rounded-xl p-4 mono text-emerald-400 text-xl font-semibold text-center border border-emerald-500/10">
+            ŷ = w · m + b
+          </div>
+          <div class="mt-4 space-y-1.5 text-slate-500 text-sm mono">
+            <div><span class="text-emerald-400">w</span> → g/k = 0.1962</div>
+            <div><span class="text-amber-400">b</span> → 편향 ≈ 0</div>
+            <div><span class="text-sky-400">Loss</span> : MSE → Adam</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ TRAINING ══════════════════════════════ -->
+  <section id="training" class="py-24 px-6">
+    <div class="max-w-7xl mx-auto">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl font-black section-title mb-4">모델 학습</h2>
+        <p class="text-slate-400 text-lg">TensorFlow로 훅의 법칙을 학습시킵니다</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        <!-- Config panel -->
+        <div class="grad-border p-8">
+          <h3 class="text-lg font-bold mb-6 flex items-center gap-2">
+            <span class="text-sky-400">⚙️</span> 학습 설정
+          </h3>
+          <div class="space-y-5">
+            <div>
+              <label class="text-slate-400 text-sm mb-2 block">에포크 수 (Epochs)</label>
+              <input id="epochs" type="number" value="500" min="50" max="2000"
+                     class="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-4 py-3
+                            text-white mono focus:outline-none focus:border-sky-500 transition-colors"/>
+            </div>
+            <div>
+              <label class="text-slate-400 text-sm mb-2 block">학습률 (Learning Rate)</label>
+              <select id="lr"
+                      class="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-4 py-3
+                             text-white focus:outline-none focus:border-sky-500 transition-colors">
+                <option value="0.001">0.001  — 정밀 학습</option>
+                <option value="0.01" selected>0.01   — 권장 (빠름)</option>
+                <option value="0.05">0.05   — 빠른 수렴</option>
+                <option value="0.1">0.1    — 실험적</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-slate-400 text-sm mb-2 block">데이터 포인트 수</label>
+              <input id="nSamples" type="number" value="200" min="50" max="1000"
+                     class="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-4 py-3
+                            text-white mono focus:outline-none focus:border-sky-500 transition-colors"/>
+            </div>
+
+            <!-- Train button -->
+            <button id="trainBtn" onclick="trainModel()"
+                    class="w-full py-4 rounded-xl font-semibold text-white text-base btn-shimmer
+                           shadow-lg shadow-sky-500/20 hover:shadow-sky-500/40 transition-shadow
+                           disabled:opacity-40 disabled:cursor-not-allowed">
+              🚀 학습 시작
+            </button>
+
+            <!-- Model architecture info -->
+            <div class="bg-[#0f172a] rounded-xl p-4 border border-slate-800 text-xs mono space-y-1.5">
+              <div class="text-slate-500 mb-2 text-xs font-semibold uppercase tracking-wider">Architecture</div>
+              <div class="text-sky-400">model = Sequential([</div>
+              <div class="pl-4 text-violet-400">Dense(1, input=[1])</div>
+              <div class="text-sky-400">])</div>
+              <div class="text-slate-500 mt-2">loss = "mse"</div>
+              <div class="text-slate-500">optimizer = Adam(lr)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Results panel -->
+        <div class="lg:col-span-2 grad-border p-8">
+          <h3 class="text-lg font-bold mb-6 flex items-center gap-2">
+            <span class="text-emerald-400">📊</span> 학습 결과
+          </h3>
+
+          <!-- State: waiting -->
+          <div id="stateWait" class="flex flex-col items-center justify-center h-64 text-slate-600">
+            <div class="text-7xl mb-5 animate-float">🧠</div>
+            <p class="text-lg">왼쪽 패널에서 학습을 시작하세요</p>
+            <p class="text-sm mt-2">TensorFlow가 F = kx를 학습합니다</p>
+          </div>
+
+          <!-- State: loading -->
+          <div id="stateLoad" class="hidden flex flex-col items-center justify-center h-64 gap-5">
+            <div class="relative w-20 h-20">
+              <div class="spinner absolute inset-0 rounded-full border-4 border-sky-400/20 border-t-sky-400"></div>
+              <div class="absolute inset-3 rounded-full bg-sky-400/5 flex items-center justify-center text-2xl">⚡</div>
+            </div>
+            <div class="text-center">
+              <p class="text-sky-400 font-semibold text-lg">TensorFlow 학습 중…</p>
+              <p class="text-slate-500 text-sm mt-1">가중치 w, 편향 b를 최적화하고 있습니다</p>
+            </div>
+            <div class="w-64 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div class="progress-fill h-full rounded-full bg-gradient-to-r from-sky-500 to-violet-500"></div>
+            </div>
+          </div>
+
+          <!-- State: results -->
+          <div id="stateResults" class="hidden">
+            <!-- Metric cards -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+              <div class="metric-card bg-[#0f172a] rounded-xl p-4 text-center border border-slate-800">
+                <div id="resR2" class="text-2xl font-black text-emerald-400 mono">—</div>
+                <div class="text-slate-500 text-xs mt-1">R² Score</div>
+              </div>
+              <div class="metric-card bg-[#0f172a] rounded-xl p-4 text-center border border-slate-800">
+                <div id="resLoss" class="text-2xl font-black text-sky-400 mono">—</div>
+                <div class="text-slate-500 text-xs mt-1">Final Loss</div>
+              </div>
+              <div class="metric-card bg-[#0f172a] rounded-xl p-4 text-center border border-slate-800">
+                <div id="resK" class="text-2xl font-black text-violet-400 mono">—</div>
+                <div class="text-slate-500 text-xs mt-1">Learned k (N/m)</div>
+              </div>
+              <div class="metric-card bg-[#0f172a] rounded-xl p-4 text-center border border-slate-800">
+                <div id="resMAE" class="text-2xl font-black text-amber-400 mono">—</div>
+                <div class="text-slate-500 text-xs mt-1">MAE (cm)</div>
+              </div>
+            </div>
+
+            <!-- Success banner -->
+            <div id="bannerOk"
+                 class="bg-emerald-500/10 border border-emerald-500/25 rounded-xl p-4 mb-5
+                        flex items-start gap-3">
+              <span class="text-2xl">✅</span>
+              <div>
+                <div class="font-semibold text-emerald-400">학습 완료!</div>
+                <div id="bannerMsg" class="text-slate-400 text-sm mono mt-0.5"></div>
+              </div>
+            </div>
+
+            <!-- Learned equation -->
+            <div class="bg-[#0f172a] border border-slate-800 rounded-xl p-4 mono text-sm space-y-1">
+              <div id="eqLearned" class="text-amber-400"></div>
+              <div id="eqTrue"    class="text-green-400"></div>
+              <div id="eqEpochs" class="text-slate-500"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Plot gallery ── -->
+      <div id="plotGallery" class="hidden mt-10 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="grad-border p-6">
+          <h3 class="text-base font-bold mb-4 flex items-center gap-2">
+            <span>📉</span> 손실 함수 (Loss Curve)
+            <span class="tip text-slate-600 text-xs ml-auto" data-tip="에포크별 MSE 손실 변화">ⓘ</span>
+          </h3>
+          <img id="imgLoss" src="" alt="Loss Curve"
+               class="w-full rounded-xl border border-slate-800 transition-opacity"/>
+        </div>
+        <div class="grad-border p-6">
+          <h3 class="text-base font-bold mb-4 flex items-center gap-2">
+            <span>📊</span> 예측 분석 (4-Panel)
+            <span class="tip text-slate-600 text-xs ml-auto" data-tip="잔차·산점도·히스토그램 포함">ⓘ</span>
+          </h3>
+          <img id="imgPred" src="" alt="Predictions"
+               class="w-full rounded-xl border border-slate-800"/>
+        </div>
+        <div class="grad-border p-6 lg:col-span-2">
+          <h3 class="text-base font-bold mb-4 flex items-center gap-2">
+            <span>🌀</span> 스프링 다이어그램 + 성능 보고서
+          </h3>
+          <img id="imgSpring" src="" alt="Spring Diagram"
+               class="w-full rounded-xl border border-slate-800"/>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ PREDICT ══════════════════════════════ -->
+  <section id="predict" class="py-24 px-6 bg-slate-900/25">
+    <div class="max-w-3xl mx-auto">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl font-black section-title mb-4">새 질량 예측</h2>
+        <p class="text-slate-400 text-lg">학습된 TF 모델로 늘어나는 길이를 예측합니다</p>
+      </div>
+
+      <div class="grad-border p-8">
+        <!-- Mass input -->
+        <label class="text-slate-300 font-semibold mb-4 block">질량 입력 (kg)</label>
+        <div class="flex items-center gap-4 mb-6">
+          <span class="text-slate-500 text-sm mono w-8">0.1</span>
+          <input id="massSlider" type="range" min="0.1" max="10" step="0.1" value="1.0"
+                 oninput="syncSlider(this.value)"
+                 class="flex-1 h-2 accent-sky-500"/>
+          <span class="text-slate-500 text-sm mono w-8">10</span>
+        </div>
+        <div class="flex items-center gap-4 mb-8">
+          <div class="flex-1 relative">
+            <input id="massInput" type="number" value="1.0" min="0.1" step="0.1"
+                   oninput="syncInput(this.value)"
+                   class="w-full bg-[#0f172a] border border-slate-700 rounded-xl px-4 py-4
+                          text-white mono text-2xl font-bold text-center
+                          focus:outline-none focus:border-sky-500 transition-colors"/>
+          </div>
+          <div class="text-slate-400 text-xl font-semibold">kg</div>
+        </div>
+
+        <!-- Quick mass buttons -->
+        <div class="flex flex-wrap gap-2 mb-8">
+          <span class="text-slate-500 text-sm self-center mr-1">빠른 선택:</span>
+          <template id="massBtn">
+            <button onclick="setMass(this.dataset.m)"
+                    class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700
+                           rounded-lg text-slate-300 text-sm mono transition-colors">
+            </button>
+          </template>
+        </div>
+
+        <!-- Preview formula -->
+        <div class="bg-[#0f172a] rounded-xl p-4 border border-slate-800 mono text-sm mb-6">
+          <span class="text-slate-500">이론값: x = (</span>
+          <span id="previewMass" class="text-amber-400">1.0</span>
+          <span class="text-slate-500"> × 9.81) / 50 = </span>
+          <span id="previewVal" class="text-emerald-400 font-bold">1.962 cm</span>
+        </div>
+
+        <!-- Predict button -->
+        <button id="predictBtn" onclick="predictExtension()"
+                class="w-full py-4 rounded-xl font-semibold text-white text-base
+                       bg-gradient-to-r from-violet-600 to-pink-600
+                       hover:from-violet-500 hover:to-pink-500 transition-all
+                       shadow-lg shadow-violet-500/20 hover:shadow-violet-500/40
+                       disabled:opacity-40 disabled:cursor-not-allowed">
+          🔮 늘어나는 길이 예측
+        </button>
+
+        <!-- Result -->
+        <div id="predResult" class="hidden mt-8">
+          <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="metric-card bg-[#0f172a] rounded-xl p-5 text-center border border-violet-500/20">
+              <div class="text-slate-400 text-xs mb-2">예측값 (TF)</div>
+              <div id="predCm" class="text-3xl font-black text-violet-400 mono">—</div>
+              <div class="text-slate-600 text-xs mt-1">cm</div>
+            </div>
+            <div class="metric-card bg-[#0f172a] rounded-xl p-5 text-center border border-emerald-500/20">
+              <div class="text-slate-400 text-xs mb-2">이론값 (F=kx)</div>
+              <div id="trueCm" class="text-3xl font-black text-emerald-400 mono">—</div>
+              <div class="text-slate-600 text-xs mt-1">cm</div>
+            </div>
+            <div class="metric-card bg-[#0f172a] rounded-xl p-5 text-center border border-amber-500/20">
+              <div class="text-slate-400 text-xs mb-2">오차율</div>
+              <div id="predErr" class="text-3xl font-black text-amber-400 mono">—</div>
+              <div class="text-slate-600 text-xs mt-1">%</div>
+            </div>
+          </div>
+          <img id="imgSingle" src="" alt="Single Prediction"
+               class="w-full rounded-xl border border-slate-800"/>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ RESULTS ══════════════════════════════ -->
+  <section id="results" class="py-24 px-6">
+    <div class="max-w-7xl mx-auto">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl font-black section-title mb-4">모델 정보</h2>
+        <p class="text-slate-400 text-lg">아키텍처 · 데이터셋 · 학습 환경</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <!-- Architecture -->
+        <div class="grad-border p-8">
+          <h3 class="text-xl font-bold mb-6 flex items-center gap-2">
+            <span class="text-sky-400">🏗️</span> 모델 아키텍처
+          </h3>
+          <div class="space-y-3 text-sm mono">
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">Type</span>
+              <span class="text-sky-400">tf.keras.Sequential</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">Layer</span>
+              <span class="text-violet-400">Dense(1, input=[1])</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">Activation</span>
+              <span class="text-emerald-400">Linear (선형)</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">Loss</span>
+              <span class="text-amber-400">MSE (Mean Squared Error)</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">Optimizer</span>
+              <span class="text-pink-400">Adam (lr=0.01)</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">Params</span>
+              <span class="text-sky-400">2  (w + b)</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">EarlyStopping</span>
+              <span class="text-green-400">patience=60</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dataset -->
+        <div class="grad-border p-8">
+          <h3 class="text-xl font-bold mb-6 flex items-center gap-2">
+            <span class="text-violet-400">📐</span> 데이터셋 정보
+          </h3>
+          <div class="space-y-3 text-sm mono">
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">스프링 상수 k</span>
+              <span class="text-sky-400">50 N/m  (true)</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">중력 가속도 g</span>
+              <span class="text-violet-400">9.81 m/s²</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">질량 범위</span>
+              <span class="text-emerald-400">0.1 ~ 5.0 kg</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">노이즈 σ</span>
+              <span class="text-amber-400">0.005 m  (Gaussian)</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">Train/Val split</span>
+              <span class="text-pink-400">80% / 20%</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">출력 저장</span>
+              <span class="text-sky-400">./output/*.png</span>
+            </div>
+            <div class="flex justify-between p-3 bg-[#0f172a] rounded-lg">
+              <span class="text-slate-500">Backend</span>
+              <span class="text-green-400">FastAPI + Uvicorn</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════ FOOTER ══════════════════════════════ -->
+  <footer class="py-8 px-6 border-t border-slate-800/60">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3
+                text-slate-600 text-sm">
+      <span>Hooke's Law Neural Network — TensorFlow 2.x + FastAPI + Tailwind CSS</span>
+      <span class="mono">F = kx · k = 50 N/m · g = 9.81 m/s²</span>
+    </div>
+  </footer>
+
+  <!-- ══════════════════════════════ SCRIPTS ══════════════════════════════ -->
+  <script>
+    // ── Quick-select mass buttons ──────────────────────────────────────────
+    const QUICK_MASSES = [0.5, 1, 2, 3, 5, 7, 10];
+    const tpl = document.getElementById('massBtn');
+    const btnRow = tpl.parentNode;
+    QUICK_MASSES.forEach(m => {
+      const btn = tpl.content.querySelector('button').cloneNode(true);
+      btn.dataset.m = m;
+      btn.textContent = m + ' kg';
+      btnRow.appendChild(btn);
+    });
+
+    // ── Slider / input sync ────────────────────────────────────────────────
+    function syncSlider(v) {
+      document.getElementById('massInput').value = parseFloat(v).toFixed(1);
+      updatePreview(v);
+    }
+    function syncInput(v) {
+      const f = parseFloat(v) || 0.1;
+      document.getElementById('massSlider').value = Math.min(10, f);
+      updatePreview(f);
+    }
+    function setMass(v) {
+      document.getElementById('massInput').value = v;
+      document.getElementById('massSlider').value = Math.min(10, v);
+      updatePreview(v);
+    }
+    function updatePreview(m) {
+      const val = ((parseFloat(m) * 9.81) / 50 * 100).toFixed(3);
+      document.getElementById('previewMass').textContent = parseFloat(m).toFixed(1);
+      document.getElementById('previewVal').textContent  = val + ' cm';
+    }
+    updatePreview(1.0);
+
+    // ── Nav status ─────────────────────────────────────────────────────────
+    let modelTrained = false;
+    function setNavStatus(trained) {
+      const el = document.getElementById('navStatus');
+      if (trained) {
+        el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span><span class="text-emerald-400">학습 완료</span>';
+      } else {
+        el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span><span class="text-slate-500">미학습</span>';
+      }
+    }
+
+    // ── Train model ────────────────────────────────────────────────────────
+    async function trainModel() {
+      const btn    = document.getElementById('trainBtn');
+      const epochs = parseInt(document.getElementById('epochs').value)   || 500;
+      const lr     = parseFloat(document.getElementById('lr').value)     || 0.01;
+      const n      = parseInt(document.getElementById('nSamples').value) || 200;
+
+      btn.disabled = true;
+      document.getElementById('stateWait').classList.add('hidden');
+      document.getElementById('stateLoad').classList.remove('hidden');
+      document.getElementById('stateResults').classList.add('hidden');
+      document.getElementById('plotGallery').classList.add('hidden');
+
+      // restart progress bar animation by replacing the element
+      const pbar = document.querySelector('.progress-fill');
+      if (pbar) { pbar.classList.remove('progress-fill'); void pbar.offsetWidth; pbar.classList.add('progress-fill'); }
+
+      try {
+        const res  = await fetch('/train', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ epochs, learning_rate: lr, n_samples: n }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const d = await res.json();
+
+        // ── Populate results ──
+        document.getElementById('stateLoad').classList.add('hidden');
+        document.getElementById('stateResults').classList.remove('hidden');
+
+        document.getElementById('resR2').textContent   = d.r_squared.toFixed(5);
+        document.getElementById('resLoss').textContent = d.final_loss.toExponential(2);
+        document.getElementById('resK').textContent    = d.learned_spring_constant.toFixed(3);
+        document.getElementById('resMAE').textContent  = (d.mae * 100).toFixed(4);
+
+        document.getElementById('bannerMsg').textContent =
+          `w = ${d.weight_w.toFixed(6)}  b = ${d.bias_b.toFixed(6)}  ` +
+          `(${d.epochs_actual}/${d.epochs_requested} epochs, EarlyStopping)`;
+
+        document.getElementById('eqLearned').textContent =
+          `Learned: x̂ = ${d.weight_w.toFixed(6)} × m + ${d.bias_b.toFixed(6)}`;
+        document.getElementById('eqTrue').textContent =
+          `True:    x  = ${(9.81/50).toFixed(6)} × m  (k = 50 N/m)`;
+        document.getElementById('eqEpochs').textContent =
+          `Epochs: ${d.epochs_actual} / ${d.epochs_requested}   R² = ${d.r_squared.toFixed(6)}`;
+
+        // ── Plots (cache-bust) ──
+        const ts = Date.now();
+        document.getElementById('plotGallery').classList.remove('hidden');
+        document.getElementById('imgLoss').src   = d.plots.loss_curve   + '?t=' + ts;
+        document.getElementById('imgPred').src   = d.plots.predictions  + '?t=' + ts;
+        document.getElementById('imgSpring').src = d.plots.spring_diagram + '?t=' + ts;
+
+        modelTrained = true;
+        setNavStatus(true);
+
+      } catch (err) {
+        console.error(err);
+        alert('학습 오류: ' + err.message);
+        document.getElementById('stateLoad').classList.add('hidden');
+        document.getElementById('stateWait').classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── Predict extension ──────────────────────────────────────────────────
+    async function predictExtension() {
+      if (!modelTrained) {
+        alert('먼저 모델을 학습시켜 주세요!');
+        document.getElementById('training').scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
+
+      const mass = parseFloat(document.getElementById('massInput').value) || 1.0;
+      const btn  = document.getElementById('predictBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ 예측 중…';
+
+      try {
+        const res = await fetch('/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mass }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const d = await res.json();
+
+        document.getElementById('predResult').classList.remove('hidden');
+        document.getElementById('predCm').textContent  = d.predicted_cm.toFixed(3);
+        document.getElementById('trueCm').textContent  = d.true_cm.toFixed(3);
+        document.getElementById('predErr').textContent = d.error_percent.toFixed(4);
+
+        const ts = Date.now();
+        document.getElementById('imgSingle').src = d.plot + '?t=' + ts;
+
+      } catch (err) {
+        console.error(err);
+        alert('예측 오류: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔮 늘어나는 길이 예측';
+      }
+    }
+  </script>
+</body>
+</html>

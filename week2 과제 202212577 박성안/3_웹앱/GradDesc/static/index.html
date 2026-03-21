@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ko" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gradient Descent — y=x² Visualizer</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            space:  { DEFAULT: '#0f0f1a', light: '#1a1a2e' },
+            purple: { DEFAULT: '#6c63ff', dark: '#4a43cc', light: '#8b85ff' },
+            pink:   { DEFAULT: '#ff6584' },
+            teal:   { DEFAULT: '#43b89c', light: '#65d4b8' },
+            amber:  { DEFAULT: '#ffc966' },
+            blue:   { DEFAULT: '#61dafb' },
+            red:    { DEFAULT: '#f87171' },
+            border: '#2d2d44',
+          },
+          fontFamily: { sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    body { background:#0f0f1a; color:#e2e8f0; }
+    .glass { background:rgba(26,26,46,.85); backdrop-filter:blur(12px); border:1px solid #2d2d44; }
+
+    /* Gradient text */
+    .grad-text { background:linear-gradient(135deg,#6c63ff,#ff6584,#43b89c); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .grad-text-2 { background:linear-gradient(135deg,#43b89c,#6c63ff); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+
+    /* Slider */
+    input[type=range]{ -webkit-appearance:none; height:4px; border-radius:9999px; background:#2d2d44; outline:none; }
+    input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:#6c63ff; cursor:pointer; border:2px solid white; box-shadow:0 0 10px rgba(108,99,255,.6); transition:transform .1s; }
+    input[type=range]::-webkit-slider-thumb:hover{ transform:scale(1.15); }
+
+    /* Animations */
+    @keyframes fadeIn{ from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    .fade-in{ animation:fadeIn .35s ease forwards; }
+    @keyframes spin{ to{transform:rotate(360deg)} }
+    .spin{ animation:spin .7s linear infinite; }
+    @keyframes pulseGlow{ 0%,100%{box-shadow:0 0 4px #43b89c} 50%{box-shadow:0 0 16px #43b89c} }
+    .pulse-dot{ animation:pulseGlow 1.5s ease-in-out infinite; }
+    @keyframes bounceIn{ 0%{transform:scale(.5);opacity:0} 70%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
+    .bounce-in{ animation:bounceIn .5s cubic-bezier(.34,1.56,.64,1) forwards; }
+
+    /* Ball animation */
+    @keyframes roll{ 0%{transform:translateY(0)} 50%{transform:translateY(-4px)} 100%{transform:translateY(0)} }
+    .ball-rolling{ animation:roll .6s ease-in-out infinite; }
+
+    /* Tab */
+    .tab-btn.active{ background:rgba(108,99,255,.2); color:#8b85ff; border-color:#6c63ff; }
+
+    /* Formula mono */
+    .formula { font-family:'JetBrains Mono',monospace; background:#0a0a14; border:1px solid #2d2d44; border-radius:.75rem; padding:.9rem; font-size:.78rem; line-height:2; }
+
+    /* Step table */
+    .step-table th{ color:#6c63ff; font-size:.7rem; font-weight:600; letter-spacing:.05em; border-bottom:1px solid #2d2d44; padding:.4rem .6rem; }
+    .step-table td{ font-size:.72rem; font-family:'JetBrains Mono',monospace; padding:.3rem .6rem; border-bottom:1px solid rgba(45,45,68,.5); }
+    .step-table tr:hover td{ background:rgba(108,99,255,.06); }
+
+    /* Badge */
+    .badge{ display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .7rem; border-radius:9999px; font-size:.7rem; font-weight:600; }
+
+    /* Preset buttons */
+    .preset-btn{ transition:all .15s; }
+    .preset-btn:hover{ transform:translateY(-1px); }
+
+    /* Learning rate warning */
+    .warn-banner{ background:rgba(248,113,113,.1); border:1px solid rgba(248,113,113,.3); border-radius:.75rem; }
+
+    /* Number input */
+    input[type=number]::-webkit-inner-spin-button{ -webkit-appearance:none; }
+    input.mono-input{ font-family:'JetBrains Mono',monospace; background:#0f0f1a; border:1px solid #2d2d44; color:#e2e8f0; border-radius:.5rem; padding:.55rem .8rem; font-size:.8rem; width:100%; outline:none; transition:border-color .2s; }
+    input.mono-input:focus{ border-color:rgba(108,99,255,.6); }
+
+    /* Glow */
+    .glow-p{ box-shadow:0 0 0 1px rgba(108,99,255,.3),0 0 20px rgba(108,99,255,.1); }
+    .glow-t{ box-shadow:0 0 0 1px rgba(67,184,156,.3),0 0 20px rgba(67,184,156,.1); }
+  </style>
+</head>
+
+<body class="font-sans antialiased min-h-screen">
+
+<!-- ═══ HEADER ═══════════════════════════════════════════════ -->
+<header class="border-b border-border bg-space-light/60 backdrop-blur sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-purple to-pink flex items-center justify-center text-sm">⛷️</div>
+      <span class="font-semibold text-sm">Gradient Descent</span>
+      <span class="px-2 py-0.5 rounded-full bg-purple/10 text-purple-light text-[10px] font-mono border border-purple/20">f(x) = x²  ·  NumPy Only</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <div id="convBadge" class="hidden badge bg-teal/10 text-teal border border-teal/20">
+        <span class="w-1.5 h-1.5 rounded-full bg-teal pulse-dot"></span>
+        <span id="convText">Converged</span>
+      </div>
+      <div id="divBadge" class="hidden badge bg-red/10 text-red border border-red/20">
+        ⚠️ Diverged
+      </div>
+      <div id="statusDot" class="w-2 h-2 rounded-full bg-border"></div>
+      <span id="statusText" class="text-xs text-gray-500">대기 중</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ HERO ══════════════════════════════════════════════════ -->
+<section class="max-w-7xl mx-auto px-6 pt-10 pb-8 text-center">
+  <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-purple/30 bg-purple/5 text-purple-light text-xs font-mono mb-5">
+    ⚡ 비지도 최적화 · Optimization
+  </div>
+  <h1 class="text-5xl md:text-6xl font-black mb-4">
+    <span class="grad-text">경사 하강법</span>
+  </h1>
+  <p class="text-gray-400 text-lg max-w-2xl mx-auto mb-2">
+    <code class="font-mono text-pink bg-pink/10 px-1.5 py-0.5 rounded">f(x) = x²</code> 손실 함수에서
+    <code class="font-mono text-teal bg-teal/10 px-1.5 py-0.5 rounded">x := x - α·2x</code> 업데이트로
+  </p>
+  <p class="text-gray-400 text-lg max-w-2xl mx-auto">공이 언덕을 굴러 최솟값으로 수렴하는 과정을 시각화</p>
+
+  <!-- Concept pills -->
+  <div class="flex justify-center gap-3 mt-6 flex-wrap">
+    <div class="glass px-4 py-2 rounded-full text-xs flex items-center gap-2">
+      <span class="text-pink font-mono">∇f(x) = 2x</span>
+      <span class="text-gray-600">·</span>
+      <span class="text-gray-400">Gradient</span>
+    </div>
+    <div class="glass px-4 py-2 rounded-full text-xs flex items-center gap-2">
+      <span class="text-amber font-mono">α</span>
+      <span class="text-gray-600">·</span>
+      <span class="text-gray-400">Learning Rate</span>
+    </div>
+    <div class="glass px-4 py-2 rounded-full text-xs flex items-center gap-2">
+      <span class="text-teal font-mono">min f(x) = 0</span>
+      <span class="text-gray-600">·</span>
+      <span class="text-gray-400">Global Min @ x=0</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ MAIN GRID ═════════════════════════════════════════════ -->
+<main class="max-w-7xl mx-auto px-6 pb-20">
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- ══ LEFT PANEL ══════════════════════════════════════════ -->
+    <aside class="lg:col-span-3 space-y-4">
+
+      <!-- Parameters -->
+      <div class="glass rounded-2xl p-5 glow-p">
+        <h2 class="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-4 rounded-full bg-purple"></span>
+          파라미터 조절
+        </h2>
+
+        <!-- x_start -->
+        <div class="mb-4">
+          <div class="flex justify-between mb-1.5">
+            <label class="text-xs text-gray-400">시작 위치 x₀</label>
+            <span id="xStartVal" class="text-xs font-mono text-pink font-bold">8.0</span>
+          </div>
+          <input type="range" id="xSlider" min="-15" max="15" step="0.5" value="8" class="w-full" />
+          <div class="flex justify-between text-[10px] text-gray-600 mt-0.5">
+            <span>-15</span><span>+15</span>
+          </div>
+        </div>
+
+        <!-- learning_rate -->
+        <div class="mb-4">
+          <div class="flex justify-between mb-1.5">
+            <label class="text-xs text-gray-400">학습률 α</label>
+            <span id="lrVal" class="text-xs font-mono text-amber font-bold">0.10</span>
+          </div>
+          <input type="range" id="lrSlider" min="0.001" max="1.5" step="0.001" value="0.1" class="w-full" />
+          <div class="flex justify-between text-[10px] text-gray-600 mt-0.5">
+            <span>0.001</span><span>1.5</span>
+          </div>
+          <!-- LR indicator bar -->
+          <div class="mt-2 h-1.5 bg-border rounded-full overflow-hidden">
+            <div id="lrBar" class="h-full rounded-full transition-all duration-300 bg-teal" style="width:6.7%"></div>
+          </div>
+          <div class="flex justify-between text-[9px] text-gray-600 mt-0.5">
+            <span>Slow</span><span class="text-amber">Optimal≈0.1</span><span class="text-red">Diverge>1</span>
+          </div>
+        </div>
+
+        <!-- max_steps -->
+        <div class="mb-4">
+          <div class="flex justify-between mb-1.5">
+            <label class="text-xs text-gray-400">최대 Steps</label>
+            <span id="stepsVal" class="text-xs font-mono text-teal font-bold">100</span>
+          </div>
+          <input type="range" id="stepsSlider" min="5" max="300" step="5" value="100" class="w-full" />
+        </div>
+
+        <!-- Warning -->
+        <div id="lrWarning" class="hidden warn-banner p-2.5 mt-2 mb-3">
+          <p class="text-[11px] text-red font-semibold">⚠️ 학습률이 너무 큽니다!</p>
+          <p class="text-[10px] text-gray-400 mt-0.5">α &gt; 1 → 발산(Divergence) 위험</p>
+        </div>
+
+        <button id="runBtn" onclick="runSim()"
+          class="w-full py-3 rounded-xl bg-purple hover:bg-purple-dark text-white font-semibold text-sm
+                 transition-all flex items-center justify-center gap-2 hover:shadow-lg active:scale-95">
+          <svg id="runIcon" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+          </svg>
+          <span id="runBtnTxt">시뮬레이션 실행</span>
+        </button>
+
+        <!-- Presets -->
+        <div class="mt-4">
+          <div class="text-[10px] text-gray-600 mb-2">빠른 프리셋</div>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button onclick="applyPreset('slow')" class="preset-btn text-[10px] py-1.5 rounded-lg border border-blue/30 bg-blue/5 text-blue hover:bg-blue/15">Too Slow</button>
+            <button onclick="applyPreset('optimal')" class="preset-btn text-[10px] py-1.5 rounded-lg border border-teal/30 bg-teal/5 text-teal hover:bg-teal/15">Optimal</button>
+            <button onclick="applyPreset('fast')" class="preset-btn text-[10px] py-1.5 rounded-lg border border-amber/30 bg-amber/5 text-amber hover:bg-amber/15">Fast</button>
+            <button onclick="applyPreset('diverge')" class="preset-btn text-[10px] py-1.5 rounded-lg border border-red/30 bg-red/5 text-red hover:bg-red/15">Diverge ⚠️</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Formula -->
+      <div class="glass rounded-2xl p-5">
+        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">핵심 공식</h2>
+        <div class="formula space-y-0">
+          <div><span class="text-purple-light">Loss:</span>   <span class="text-teal">f(x) = x²</span></div>
+          <div><span class="text-purple-light">Grad: </span>  <span class="text-pink">∇f = 2x</span></div>
+          <div><span class="text-purple-light">Update:</span> <span class="text-amber">x ← x - α·2x</span></div>
+          <div><span class="text-purple-light">      </span>  <span class="text-amber">  = x(1 - 2α)</span></div>
+          <div class="text-[10px] text-gray-600 pt-1">
+            Converges when |1 - 2α| &lt; 1<br/>
+            i.e., 0 &lt; α &lt; 1
+          </div>
+        </div>
+      </div>
+
+      <!-- Result stats -->
+      <div id="resultCard" class="glass rounded-2xl p-5 hidden fade-in">
+        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">수렴 결과</h2>
+        <div class="space-y-2.5 text-xs">
+          <div class="flex justify-between">
+            <span class="text-gray-500">Steps</span>
+            <span id="resSteps" class="font-mono font-bold text-purple-light"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Final x</span>
+            <span id="resFx" class="font-mono font-bold text-teal"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Final Loss</span>
+            <span id="resFl" class="font-mono font-bold text-amber"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">Loss Reduction</span>
+            <span id="resPct" class="font-mono font-bold text-pink"></span>
+          </div>
+          <hr class="border-border" />
+          <!-- Mini loss progress bar -->
+          <div>
+            <div class="flex justify-between text-[10px] text-gray-600 mb-1">
+              <span>Start Loss</span><span id="lossStart"></span>
+            </div>
+            <div class="h-1.5 bg-border rounded-full overflow-hidden">
+              <div id="lossBar" class="h-full bg-pink/50 rounded-full transition-all duration-700" style="width:100%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[10px] text-gray-600 mb-1">
+              <span>Final Loss</span><span id="lossFinal"></span>
+            </div>
+            <div class="h-1.5 bg-border rounded-full overflow-hidden">
+              <div id="lossFinalBar" class="h-full bg-teal/50 rounded-full transition-all duration-700" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ══ CENTER PANEL ═════════════════════════════════════════ -->
+    <section class="lg:col-span-6 space-y-4">
+
+      <!-- Main Plot Tabs -->
+      <div class="glass rounded-2xl overflow-hidden">
+        <div class="flex border-b border-border px-4 pt-3 gap-1">
+          <button class="tab-btn active text-xs px-3 py-1.5 rounded-t-lg border border-transparent font-medium transition"
+            onclick="switchTab('path',this)">⛷️ GD Path</button>
+          <button class="tab-btn text-xs px-3 py-1.5 rounded-t-lg border border-transparent font-medium text-gray-500 transition"
+            onclick="switchTab('loss',this)">📉 Loss Curve</button>
+          <button class="tab-btn text-xs px-3 py-1.5 rounded-t-lg border border-transparent font-medium text-gray-500 transition"
+            onclick="switchTab('compare',this)">⚖️ Comparison</button>
+        </div>
+        <div class="p-4">
+          <div id="tab-path">
+            <div id="pathWrap" class="rounded-xl bg-space flex items-center justify-center min-h-80">
+              <div class="text-center text-gray-600">
+                <div class="text-4xl mb-3 ball-rolling">⛷️</div>
+                <p class="text-sm">시뮬레이션 실행 후 표시됩니다</p>
+                <p class="text-xs mt-1 text-gray-700">파라미터를 조절하고 실행 버튼을 누르세요</p>
+              </div>
+            </div>
+          </div>
+          <div id="tab-loss" class="hidden">
+            <div id="lossWrap" class="rounded-xl bg-space flex items-center justify-center min-h-80">
+              <p class="text-xs text-gray-600">실행 후 표시</p>
+            </div>
+          </div>
+          <div id="tab-compare" class="hidden">
+            <div id="compareWrap" class="rounded-xl bg-space flex items-center justify-center min-h-80">
+              <p class="text-xs text-gray-600">실행 후 표시</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Applied formula (live) -->
+      <div id="liveFormula" class="glass rounded-2xl p-4 hidden fade-in">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">실시간 업데이트 공식</h3>
+        <div class="formula text-[11px] space-y-0.5">
+          <div>x₀ = <span id="fxStart" class="text-pink"></span></div>
+          <div>x₁ = x₀ - α·2x₀ = <span id="fxStart2" class="text-gray-500"></span> - <span id="fAlpha" class="text-amber"></span>·<span id="fGrad" class="text-pink"></span> = <span id="fX1" class="text-teal font-bold"></span></div>
+          <div>Loss(x₀) = <span id="fL0" class="text-gray-400"></span> → Loss(x₁) = <span id="fL1" class="text-teal"></span></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══ RIGHT PANEL ══════════════════════════════════════════ -->
+    <aside class="lg:col-span-3 space-y-4">
+
+      <!-- Learning rate guide -->
+      <div class="glass rounded-2xl p-4">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">학습률 가이드</h3>
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 p-2 rounded-lg bg-blue/5 border border-blue/20">
+            <span class="text-blue text-[10px] font-mono font-bold w-16">α ≤ 0.05</span>
+            <div>
+              <div class="text-[10px] text-gray-300">Too Slow</div>
+              <div class="text-[9px] text-gray-600">수렴하나 오래 걸림</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 p-2 rounded-lg bg-teal/5 border border-teal/20">
+            <span class="text-teal text-[10px] font-mono font-bold w-16">0.05~0.5</span>
+            <div>
+              <div class="text-[10px] text-gray-300">Optimal Zone</div>
+              <div class="text-[9px] text-gray-600">빠르고 안정적 수렴</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 p-2 rounded-lg bg-amber/5 border border-amber/20">
+            <span class="text-amber text-[10px] font-mono font-bold w-16">0.5~1.0</span>
+            <div>
+              <div class="text-[10px] text-gray-300">Oscillating</div>
+              <div class="text-[9px] text-gray-600">진동하며 느린 수렴</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 p-2 rounded-lg bg-red/5 border border-red/20">
+            <span class="text-red text-[10px] font-mono font-bold w-16">α &gt; 1.0</span>
+            <div>
+              <div class="text-[10px] text-gray-300 font-semibold">DIVERGE ⚠️</div>
+              <div class="text-[9px] text-gray-600">발산 — 최솟값 미도달</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step table -->
+      <div class="glass rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Step 상세</h3>
+          <span id="stepCount" class="text-[10px] text-gray-600 font-mono"></span>
+        </div>
+        <div class="overflow-auto max-h-64 rounded-lg">
+          <table class="w-full step-table">
+            <thead class="sticky top-0 bg-space-light">
+              <tr>
+                <th class="text-left">Step</th>
+                <th class="text-right">x</th>
+                <th class="text-right">Loss</th>
+                <th class="text-right">|grad|</th>
+              </tr>
+            </thead>
+            <tbody id="stepTableBody">
+              <tr><td colspan="4" class="text-center text-gray-600 py-4 text-xs">실행 후 표시</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Convergence math -->
+      <div class="glass rounded-2xl p-4">
+        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">수렴 조건</h3>
+        <div class="formula text-[10px] space-y-1">
+          <div class="text-purple-light">Update: x(1 - 2α)</div>
+          <div class="text-gray-400">Converge: |1-2α| &lt; 1</div>
+          <div class="text-teal">  → 0 &lt; α &lt; 1</div>
+          <div class="text-gray-600 pt-1">α=0.1: factor = 0.8</div>
+          <div class="text-gray-600">Each step: loss×0.64</div>
+          <div class="text-gray-600">50 steps: loss×<span id="factorCalc">0.64⁵⁰</span></div>
+        </div>
+        <div id="convMathCard" class="mt-3 hidden fade-in">
+          <div class="text-[10px] font-mono text-gray-500 space-y-0.5">
+            <div>factor = (1-2α)² = <span id="factorVal" class="text-amber"></span></div>
+            <div>After <span id="convSteps" class="text-purple-light"></span> steps:</div>
+            <div>loss × factor^n = <span id="convLoss" class="text-teal"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast -->
+      <div id="toast" class="hidden fixed bottom-6 right-6 z-50 fade-in">
+        <div class="glass rounded-xl px-4 py-3 text-sm flex items-center gap-3 border border-teal/30 shadow-xl">
+          <div class="w-2 h-2 rounded-full bg-teal pulse-dot"></div>
+          <span id="toastMsg" class="text-gray-300"></span>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+</main>
+
+<script>
+  // ── State ──────────────────────────────────────────────
+  let presetsData = {};
+
+  // ── Slider bindings ────────────────────────────────────
+  const xSlider    = document.getElementById('xSlider');
+  const lrSlider   = document.getElementById('lrSlider');
+  const stepsSlider= document.getElementById('stepsSlider');
+
+  xSlider.addEventListener('input', () => {
+    document.getElementById('xStartVal').textContent = parseFloat(xSlider.value).toFixed(1);
+  });
+  lrSlider.addEventListener('input', updateLR);
+  stepsSlider.addEventListener('input', () => {
+    document.getElementById('stepsVal').textContent = stepsSlider.value;
+  });
+
+  function updateLR() {
+    const lr = parseFloat(lrSlider.value);
+    document.getElementById('lrVal').textContent = lr.toFixed(3);
+    const pct = (lr / 1.5) * 100;
+    const bar = document.getElementById('lrBar');
+    bar.style.width = pct + '%';
+    if (lr > 1.0) {
+      bar.className = bar.className.replace(/bg-\w+/,''); bar.classList.add('bg-red');
+      document.getElementById('lrWarning').classList.remove('hidden');
+    } else if (lr > 0.5) {
+      bar.className = bar.className.replace(/bg-\w+/,''); bar.classList.add('bg-amber');
+      document.getElementById('lrWarning').classList.add('hidden');
+    } else {
+      bar.className = bar.className.replace(/bg-\w+/,''); bar.classList.add('bg-teal');
+      document.getElementById('lrWarning').classList.add('hidden');
+    }
+    // Update convergence math
+    const factor = Math.pow(1 - 2*lr, 2);
+    document.getElementById('factorVal').textContent = factor.toFixed(6);
+  }
+
+  // ── Tab switch ─────────────────────────────────────────
+  function switchTab(name, btn) {
+    ['path','loss','compare'].forEach(t => {
+      document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+    });
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  // ── Toast ──────────────────────────────────────────────
+  function showToast(msg, dur = 3000) {
+    const t = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    t.classList.remove('hidden');
+    setTimeout(() => t.classList.add('hidden'), dur);
+  }
+
+  // ── Status ─────────────────────────────────────────────
+  function setStatus(s) {
+    const dot  = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    const m = { idle:['bg-border','text-gray-600','대기 중'], loading:['bg-amber','text-amber','처리 중...'],
+                done:['bg-teal','text-teal','완료'], error:['bg-red','text-red','오류'] };
+    const [dc,tc,l] = m[s]||m.idle;
+    dot.className=`w-2 h-2 rounded-full ${dc}`;
+    text.className=`text-xs ${tc}`;
+    text.textContent=l;
+  }
+
+  function setLoading(on) {
+    const btn  = document.getElementById('runBtn');
+    const icon = document.getElementById('runIcon');
+    const txt  = document.getElementById('runBtnTxt');
+    btn.disabled = on;
+    btn.classList.toggle('opacity-60',on);
+    icon.classList.toggle('spin',on);
+    txt.textContent = on ? '계산 중...' : '시뮬레이션 실행';
+    setStatus(on ? 'loading' : 'done');
+  }
+
+  function setImg(wrapId, url, alt) {
+    document.getElementById(wrapId).innerHTML =
+      `<img src="${url}" alt="${alt}"
+            class="w-full h-full object-contain rounded-xl cursor-zoom-in hover:scale-[1.02] transition-transform"
+            onclick="window.open('${url}','_blank')" />`;
+  }
+
+  // ── Presets ────────────────────────────────────────────
+  async function loadPresets() {
+    try {
+      const r = await fetch('/api/presets');
+      presetsData = await r.json();
+    } catch (_) {}
+  }
+
+  function applyPreset(name) {
+    const p = presetsData[name];
+    if (!p) return;
+    xSlider.value  = p.x_start;
+    lrSlider.value = p.learning_rate;
+    document.getElementById('xStartVal').textContent = parseFloat(p.x_start).toFixed(1);
+    updateLR();
+    runSim();
+  }
+
+  // ── Run Simulation ─────────────────────────────────────
+  async function runSim() {
+    const x_start       = parseFloat(xSlider.value);
+    const learning_rate = parseFloat(lrSlider.value);
+    const max_steps     = parseInt(stepsSlider.value);
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/simulate', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ x_start, learning_rate, max_steps }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const d = await res.json();
+
+      // Images
+      setImg('pathWrap',    d.gd_path_plot,    'GD Path');
+      setImg('lossWrap',    d.loss_curve_plot,  'Loss Curve');
+      setImg('compareWrap', d.comparison_plot,  'Comparison');
+
+      // Convergence badges
+      document.getElementById('convBadge').classList.toggle('hidden', !d.converged || d.diverged);
+      document.getElementById('divBadge').classList.toggle('hidden', !d.diverged);
+      if (d.converged)
+        document.getElementById('convText').textContent = `Converged in ${d.n_steps} steps`;
+
+      // Result stats card
+      document.getElementById('resultCard').classList.remove('hidden');
+      document.getElementById('resSteps').textContent = `${d.n_steps} steps`;
+      document.getElementById('resFx').textContent    = d.final_x.toExponential(3);
+      document.getElementById('resFl').textContent    = d.final_loss.toExponential(3);
+      document.getElementById('resPct').textContent   = `${d.convergence_pct.toFixed(2)}%`;
+      document.getElementById('lossStart').textContent = d.loss_start.toFixed(4);
+      document.getElementById('lossFinal').textContent = d.final_loss.toExponential(3);
+      const relPct = d.final_loss / (d.loss_start + 1e-30) * 100;
+      setTimeout(() => {
+        document.getElementById('lossFinalBar').style.width = Math.max(relPct, 0.2) + '%';
+        document.getElementById('lossBar').style.width = '100%';
+      }, 200);
+
+      // Live formula (step 0 → step 1)
+      if (d.steps.length > 1) {
+        document.getElementById('liveFormula').classList.remove('hidden');
+        const s0 = d.steps[0], s1 = d.steps[1];
+        document.getElementById('fxStart').textContent  = s0.x.toFixed(4);
+        document.getElementById('fxStart2').textContent = s0.x.toFixed(4);
+        document.getElementById('fAlpha').textContent   = learning_rate;
+        document.getElementById('fGrad').textContent    = s0.gradient.toFixed(4);
+        document.getElementById('fX1').textContent      = s1.x.toFixed(6);
+        document.getElementById('fL0').textContent      = s0.loss.toFixed(4);
+        document.getElementById('fL1').textContent      = s1.loss.toFixed(6);
+      }
+
+      // Convergence math
+      document.getElementById('convMathCard').classList.remove('hidden');
+      const fac = Math.pow(1 - 2 * learning_rate, 2);
+      document.getElementById('factorVal').textContent  = fac.toFixed(6);
+      document.getElementById('convSteps').textContent  = d.n_steps;
+      document.getElementById('convLoss').textContent   = (d.loss_start * Math.pow(fac, d.n_steps)).toExponential(2);
+
+      // Step table (show up to 50)
+      const tbody = document.getElementById('stepTableBody');
+      const show  = d.steps.slice(0, 50);
+      tbody.innerHTML = show.map((s, i) => {
+        const isLast = i === show.length - 1;
+        const rowColor = isLast ? 'text-teal' : (i === 0 ? 'text-pink' : '');
+        return `<tr>
+          <td class="${rowColor} font-mono">${s.step}</td>
+          <td class="text-right font-mono ${rowColor}">${s.x.toFixed(5)}</td>
+          <td class="text-right font-mono ${rowColor}">${s.loss.toExponential(2)}</td>
+          <td class="text-right font-mono ${Math.abs(s.gradient) < 0.001 ? 'text-teal' : ''}">${Math.abs(s.gradient).toFixed(4)}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('stepCount').textContent =
+        `${d.steps.length} steps${d.steps.length >= 200 ? ' (최대 200 표시)' : ''}`;
+
+      const status = d.diverged ? '💥 발산!' : d.converged ? `✅ ${d.n_steps}스텝 수렴` : `⏱ ${d.n_steps}스텝 (미수렴)`;
+      showToast(status);
+      setLoading(false);
+
+    } catch(err) {
+      setStatus('error');
+      setLoading(false);
+      showToast('❌ ' + err.message);
+    }
+  }
+
+  // ── Init ───────────────────────────────────────────────
+  window.addEventListener('load', async () => {
+    await loadPresets();
+    updateLR();
+    setTimeout(runSim, 500);
+  });
+</script>
+</body>
+</html>
